@@ -7,7 +7,7 @@ Entusiasta del constante aprendizaje con un  gran amor por python,react,node js,
 
 Actualmente estoy aprendiendo muchas cosas, cada dia es una oportunidad de aprendizaje.
 
-Me interesa la resolución de problemas mediante la codificación y algoritmos
+Me interesa la resolución de problemas mediante algoritmos
 la creación de software y sistemas, 
 la gestión de redes, 
 el aprendizaje continuo de nuevos lenguajes y metodologías de programación, así como la aplicación en diversas áreas como seguridad.
