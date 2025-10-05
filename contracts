@@ -34,7 +34,7 @@ contract KipuBank {
     // @param Variables de estado 
 
     /// @notice Máximo permitido por transacción de retiro.
-    uint256 public immutable limiteRetiro;
+    uint256 public immutable maxRetiro;
 
     /// @notice Capacidad total del banco en ETH.
     uint256 public immutable capacidadTotalDelBanco;
@@ -62,7 +62,7 @@ contract KipuBank {
         require(_totalDeposito > 0, "Total de deposito invalido");
 
         maxRetiro = _maxRetiro;
-        totalDeposito = _totalDeposito;
+        capacidadTotalDelBanco = _totalDeposito;
     }
 
     // @param Modificadores 
@@ -105,18 +105,16 @@ contract KipuBank {
    
   function retirar(uint256 monto)
         external
-        MaxRetiroExcedido(monto)
+        maximoPermitido(monto)
     {
-        if (userVaults[msg.sender] < monto) revert saldoInsuficiente();
-        
-
-        
-        saldoBoveda[msg.sender] -= amount;
-        totalDepositos -= amount;
+        if (saldoBoveda[msg.sender] < monto) revert saldoInsuficiente();
+                
+        saldoBoveda[msg.sender] -= monto;
+        totalDepositos -= monto;
         contadorRetiros[msg.sender]++;
 
         _transferenciaSegura(msg.sender, monto);
-        emit RetiroRealizado(msg.sender, amount);
+        emit RetiroRealizado(msg.sender, monto);
     }
 
     /// @notice Consulta el saldo actual de un usuario en su bóveda.
