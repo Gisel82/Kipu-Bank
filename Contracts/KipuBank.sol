@@ -1,142 +1,197 @@
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30; 
 
-/// @title KipuBank - Es Un contrato de bóveda de depósito con límite por transacción y capacidad total, ademas permite a los usuarios depositar y retirar ETH con restricciones.
- 
-///@dev Usa prácticas de seguridad estándar como errores personalizados, patrón checks-effects-interactions, y eventos.
+/// @title KipuBank - It is a deposit vault contract with a transaction limit and total capacity, and also allows users to deposit and withdraw ETH with restrictions.
+///@dev Use standard security practices such as custom errors, checks-effects-interactions patterns, and events.
 
 contract KipuBank {
 
-    /// @notice Se emite cuando el usuario realiza un deposito exitoso .
-    /// @param user la direccion del usuario y el amount la cantidad de ETH depositada.
-
-    event DepositoRealizado(address indexed usuario, uint256 monto);
+    // =================================
+    // IMMUTABLE/CONSTANT VARIABLES
+    // =================================
     
-    /// @notice Se emite cuando el usuario realiza un retiro exitoso .
-    /// @param user la direccion del usuario y el amount la cantidad de ETH retirada.
-    
-
-    event RetiroRealizado(address indexed usuario, uint256 monto);
-
-    ///@param Errores
-
-    /// @notice Se lanza cuando un deposito excede la capacidad bancaria global
-    error MaxDepositoExcedido();
-
-    /// @notice Cuando un retiro excede el limite de transacción.
-    error MaxRetiroExcedido();
-
-    /// @notice Cuando un usuario intenta retirar mas de su saldo 
-    error saldoInsuficiente();
-
-    /// @notice Al intentar depositar cero ETH.
-    error depositoCeroNoPermitido();
-
-    // @param Variables de estado 
 
     /// @notice Máximo permitido por transacción de retiro.
-    uint256 public immutable maxRetiro;
+    uint256 public immutable maxWithdrawal;
 
     /// @notice Capacidad total del banco en ETH.
-    uint256 public immutable capacidadTotalDelBanco;
+    uint256 public immutable totalBankCapacity;
+
+    
+    // ==================
+    // STORAGE VARIABLES
+    // ==================
 
     /// @notice Total actual de todos los depósitos en el contrato.
-    uint256 public totalDepositos;
+    uint256 public totalDeposits;
 
-    /// @notice Registro de fondos de cada usuario.
-    mapping(address => uint256) private saldoBoveda;
+   
+    // ==============================
+    // MAPPINGS
+    // ==============================
 
-    /// @notice Conteo de depósitos por usuario.
-    mapping(address => uint256) public contadorDepositos;
 
-    /// @notice Conteo de retiros por usuario.
-    mapping(address => uint256) public contadorRetiros;
+    /// @notice User balances stored in the vault.
+    mapping(address => uint256) private vaultBalance;
 
-    //@param Constructor 
+    /// @notice Number of deposits made by each user.
+    mapping(address => uint256) public depositCount;
 
-    /// @notice Constructor que inicializa el contrato con los límites establecidos.
-    /// @param _maxRetiro Límite máximo de retiro por transacción.
-    /// @param _totalDeposito Capacidad total del banco.
+    /// @notice Number of withdrawals made by each user.
+    mapping(address => uint256) public withdrawalCount;
+
+
+    // =======
+    // EVENTS
+    // =======
+
+
+    /// @notice It is issued when the user makes a successful deposit.
+    /// @param user is the user's address 
+    ///@param  amount Amount of ETH deposited.
+
+    event DepositMade(address indexed user, uint256 amount);
     
-    constructor(uint256 _maxRetiro, uint256 _totalDeposito) {
-        require(_maxRetiro > 0, "Maximo de retiro invalido");
-        require(_totalDeposito > 0, "Total de deposito invalido");
+    /// @notice It is issued when the user makes a successful withdrawal.
+    /// @param user the user's address 
+   ///@param amount Amount of ETH withdrawn.
+    
 
-        maxRetiro = _maxRetiro;
-        capacidadTotalDelBanco = _totalDeposito;
+    event WithdrawalMade(address indexed user, uint256 amount);
+
+
+    // ==============================
+    // CUSTOM ERRORS
+    // ==============================
+
+    /// @notice It is launched when a deposit exceeds the global banking capacity.
+    error MaxDepositExceeded();
+
+    /// @notice When a withdrawal exceeds the transaction limit.
+    error MaxWithdrawalExceeded();
+
+    /// @notice When a user tries to withdraw more than their balance
+    error InsufficientBalance();
+
+    /// @notice When trying to deposit 0 ETH.
+    error ZeroDepositNotAllowed();
+
+    /// @notice Thrown if you try to send ETH directly to the contract.
+    error DirectTransferNotAllowed();
+
+    /// @notice Thrown if the maxRetiro value in the constructor is invalid.
+    error MaximumWithdrawalInvalid();
+
+    /// @notice Thrown if the bank capacity in the constructor is invalid.
+    error InvalidBankCapacity();
+
+   
+    // ==============================
+    // CONSTRUCTOR
+    // ==============================
+
+    /// @notice Initializes the contract with the specified limits.
+    /// @param _maxWithdrawal Maximum withdrawal limit per transaction.
+    /// @param _totalCapacity Total ETH capacity of the bank.
+    
+    constructor(uint256 _maxWithdrawal, uint256 _totalCapacity) {
+        if (_maxWithdrawal == 0) revert MaximumWithdrawalInvalid();
+        if (_totalCapacity == 0) revert InvalidBankCapacity();
+
+        maxWithdrawal = _maxWithdrawal;
+        totalBankCapacity = _totalCapacity;
     }
 
-    // @param Modificadores 
-    
+    // ==============================
+    // MODIFIERS
+    // ==============================
 
-    /// @notice Verifica que la cantidad enviada sea mayor a 0.
-    modifier depositoNoCero() {
-        if (msg.value == 0) {
-            revert depositoCeroNoPermitido();
-        }
+
+    /// @notice Verify that the amount sent is greater than 0.
+      
+    modifier nonZeroDeposit() {
+        if (msg.value == 0) revert ZeroDepositNotAllowed();
+        _;
+    }
+    
+    /// @notice Check that the withdrawal is within the maximum allowed.
+    /// @param amount Amount to withdraw.
+    
+    modifier withinWithdrawalLimit(uint256 amount) {
+        if (amount > maxWithdrawal) revert MaxWithdrawalExceeded();
         _;
     }
 
-    /// @notice Verifica que el retiro esté dentro del maximo permitido.
-    /// @param monto Cantidad a retirar.
-    modifier maximoPermitido(uint256 monto) {
-        if (monto > maxRetiro) {
-            revert MaxRetiroExcedido();
+    // ==============================
+    //  EXTERNAL PAYABLE FUNCTIONS
+    // ==============================
+
+    /// @notice Deposits ETH into the user's personal vault.
+    /// @dev Check global limit and record deposit.
+    
+    function deposit() external payable nonZeroDeposit {
+        if (totalDeposits + msg.value > totalBankCapacity) {
+            revert MaxDepositExceeded();
         }
-        _;
+
+        vaultBalance[msg.sender] += msg.value;
+        totalDeposits += msg.value;
+        depositCount[msg.sender]++;
+
+        emit DepositMade(msg.sender, msg.value);
     }
 
-    // @param Funciones 
-
-    /// @notice Deposita ETH en la bóveda personal del usuario.
-    /// @dev Verifica limite global y registra deposito.
-    
-    function depositar() external payable depositoNoCero {
-        if (totalDepositos + msg.value > capacidadTotalDelBanco) revert MaxDepositoExcedido();
-
-        saldoBoveda[msg.sender] += msg.value;
-        totalDepositos += msg.value;
-        contadorDepositos[msg.sender]++;
-
-        emit DepositoRealizado(msg.sender, msg.value);
-    }
-
-    /// @notice Retira una cantidad específica de ETH de la bóveda del usuario.
-    /// @param monto La cantidad de ETH a retirar y usa transferencias seguras y errores personalizados.
+    /// @notice Withdraws a specified amount of ETH from the user's vault.
+    /// @param amount The amount of ETH to withdraw and uses secure transfers and custom errors.
    
-  function retirar(uint256 monto)
-        external
-        maximoPermitido(monto)
-    {
-        if (saldoBoveda[msg.sender] < monto) revert saldoInsuficiente();
-                
-        saldoBoveda[msg.sender] -= monto;
-        totalDepositos -= monto;
-        contadorRetiros[msg.sender]++;
+   function withdraw(uint256 amount) external withinWithdrawalLimit(amount) {
+        uint256 balance = vaultBalance[msg.sender];
+        if (balance < amount) revert InsufficientBalance();
 
-        _transferenciaSegura(msg.sender, monto);
-        emit RetiroRealizado(msg.sender, monto);
+        unchecked {
+            vaultBalance[msg.sender] = balance - amount;
+            totalDeposits -= amount;
+        }
+
+        withdrawalCount[msg.sender]++;
+        _safeTransfer(msg.sender, amount);
+
+        emit WithdrawalMade(msg.sender, amount);
     }
 
-    /// @notice Consulta el saldo actual de un usuario en su bóveda.
-    /// @param usuario Dirección del usuario y devuelve el saldo actual de ETH del usuario.
+    //===========================
+    // EXTERNAL  VIEW FUNCTIONS
+    //===========================
     
-    function consultarSaldo(address usuario) external view returns (uint256) {
-        return saldoBoveda[usuario];
+    /// @notice Returns the current vault balance of a given user.
+    /// @param user Address of the user to query.
+    /// @return The ETH balance of the user in the vault.
+
+      
+    function getBalance(address user) external view returns (uint256) {
+        return vaultBalance[user];
     }
 
-    // @param Funciones Privadas 
+    // ==================
+    // PRIVATE FUNCTIONS
+    // ==================
 
-    /// @dev Maneja la transferencia segura de ETH.
-    /// @param destinatario Dirección a la que se enviará el ETH y monto Cantidad de ETH a transferir.
-    
-    function _transferenciaSegura(address destinatario, uint256 monto) private {
-        (bool exito, ) = destinatario.call{value: monto}("");
-        require(exito, "Fallo la transferencia de ETH");
+
+    /// @dev Handles secure ETH transfer.
+    /// @param recipient Address to which the ETH will be sent 
+    ///@param amount Amount of ETH to be transferred.
+
+    function _safeTransfer(address recipient, uint256 amount) private {
+        (bool success, ) = recipient.call{value: amount}("");
+        if (!success) revert();
     }
 
-   
-    /// @notice Rechaza cualquier ETH enviado por error.
+    // ==================
+    // RECEIVE FUNCTION
+    // ==================
+
+    /// @notice Rejects direct ETH transfers.
     receive() external payable {
-        revert("Transferencias directas no permitidas");
+        revert DirectTransferNotAllowed();
     }
 }
